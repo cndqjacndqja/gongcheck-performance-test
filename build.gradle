@@ -10,9 +10,8 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.codehaus.groovy:groovy:3.0.5'
-    implementation group: 'org.ngrinder', name: 'ngrinder-groovy', version: '3.5.3'
-
+    implementation 'org.codehaus.groovy:groovy-all:3.0.5'
+    implementation group: 'org.ngrinder', name: 'ngrinder-groovy', version: '3.5.5-p1'
 }
 
 configurations {
