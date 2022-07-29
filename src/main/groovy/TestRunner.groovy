@@ -1,20 +1,25 @@
-import HTTPClient.HTTPResponse
 import HTTPClient.NVPair
-import groovy.json.JsonSlurper
-import net.grinder.plugin.http.HTTPRequest
+
+import static net.grinder.script.Grinder.grinder
+import static org.junit.Assert.*
+import static org.hamcrest.Matchers.*
 import net.grinder.script.GTest
+import net.grinder.script.Grinder
+import groovy.json.JsonSlurper
 import net.grinder.scriptengine.groovy.junit.GrinderRunner
 import net.grinder.scriptengine.groovy.junit.annotation.BeforeProcess
 import net.grinder.scriptengine.groovy.junit.annotation.BeforeThread
+// import static net.grinder.util.GrinderUtils.* // You can use this if you're using nGrinder after 3.2.3
 import org.junit.Before
+import org.junit.BeforeClass
 import org.junit.Test
 import org.junit.runner.RunWith
 
-import static net.grinder.script.Grinder.grinder
-import static org.hamcrest.Matchers.is
-import static org.junit.Assert.assertThat
-
-// import static net.grinder.util.GrinderUtils.* // You can use this if you're using nGrinder after 3.2.3
+import org.ngrinder.http.HTTPRequest
+import org.ngrinder.http.HTTPRequestControl
+import org.ngrinder.http.HTTPResponse
+import org.ngrinder.http.cookie.Cookie
+import org.ngrinder.http.cookie.CookieManager
 
 /**
  * A simple example using the HTTP plugin that shows the retrieval of a single page via HTTP.
@@ -32,25 +37,25 @@ class TestRunner {
     public static GTest test4
     public static GTest test5
     public static GTest test6
-
     public static HTTPRequest request
-    public static NVPair[] headers;
+    public static Map<String, Object> params = [:]
+    public static Map<String, String> headers = [:]
     public static String body = "{\n    \"password\" : \"1234\"\n}"
-    public static String token
-    public static boolean active
+    public static List<Cookie> cookies = []
 
     @BeforeProcess
     public static void beforeProcess() {
-        test1 = new GTest(1, "POST api/hosts/{hostId}/enter")
-        test2 = new GTest(1, "GET /api/spaces")
-        test3 = new GTest(1, "GET /api/spaces/{spaceId}/jobs")
-        test4 = new GTest(1, "GET /api/jobs/jobId/active")
-        test5 = new GTest(1, "POST api/jobs/{jobId}/runningTasks/new")
-        test6 = new GTest(1, "POST api/tasks/{taskId}/flip")
-
+        HTTPRequestControl.setConnectionTimeout(300000)
+        test1 = new GTest(1, "POST api/hosts/1/enter")
+        test2 = new GTest(2, "GET /api/spaces")
+        test3 = new GTest(3, "3")
+        test4 = new GTest(4, "4")
+        test5 = new GTest(5, "5")
+        test6 = new GTest(6, "6")
         request = new HTTPRequest()
 
         // Set header data
+        headers.put("Content-Type", "application/json")
 
         grinder.logger.info("before process.")
     }
@@ -59,10 +64,10 @@ class TestRunner {
     public void beforeThread() {
         test1.record(this, "test1")
         test2.record(this, "test2")
-        test3.record(this, "test3")
-        test4.record(this, "test4")
-        test5.record(this, "test5")
-        test6.record(this, "test6")
+        test3.record(this, "test2")
+        test4.record(this, "test2")
+        test5.record(this, "test2")
+        test6.record(this, "test2")
 
         grinder.statistics.delayReports = true
         grinder.logger.info("before thread.")
@@ -70,47 +75,49 @@ class TestRunner {
 
     @Before
     public void before() {
+        request.setHeaders(headers)
+        CookieManager.addCookies(cookies)
         grinder.logger.info("before. init headers and cookies")
     }
 
+    private String accessToken
+
     @Test
     public void test1() {
-        headers = [new NVPair("Content-Type", "application/json")]
         request.setHeaders(headers)
+
         HTTPResponse response = request.POST("http://127.0.0.1:8080/api/hosts/1/enter", body.getBytes())
-        def jsonSlurper = new JsonSlurper()
-        def object = jsonSlurper.parseText(response.getText())
-        assert object instanceof Map
-        token = object.token
-        println token
+        def slurper = new JsonSlurper()
+        def toJSON = { slurper.parseText(it) }
+        def result = response.getBody(toJSON);
+        accessToken = result.token
         if (response.statusCode == 301 || response.statusCode == 302) {
             grinder.logger.warn("Warning. The response may not be correct. The response code was {}.", response.statusCode)
         } else {
             assertThat(response.statusCode, is(200))
         }
-        println 'test1 완료'
     }
 
     @Test
     public void test2() {
-        headers = [new NVPair("Authorization", "Bearer " + token)]
+        String token = "Bearer " + accessToken
+        headers.put("Authorization", token)
         request.setHeaders(headers)
         HTTPResponse response = request.GET("http://127.0.0.1:8080/api/spaces")
-        println response.getText()
+
         if (response.statusCode == 301 || response.statusCode == 302) {
             grinder.logger.warn("Warning. The response may not be correct. The response code was {}.", response.statusCode)
         } else {
             assertThat(response.statusCode, is(200))
         }
-        println 'test2 완료'
     }
 
     @Test
     public void test3() {
-        headers = [new NVPair("Authorization", "Bearer " + token)]
+        String token = "Bearer " + accessToken
+        headers.put("Authorization", token)
         request.setHeaders(headers)
         HTTPResponse response = request.GET("http://127.0.0.1:8080/api/spaces/1/jobs")
-        println response.getText()
         if (response.statusCode == 301 || response.statusCode == 302) {
             grinder.logger.warn("Warning. The response may not be correct. The response code was {}.", response.statusCode)
         } else {
@@ -118,16 +125,17 @@ class TestRunner {
         }
         println 'test3 완료'
     }
-
+    private boolean active
     @Test
     public void test4() {
-        headers = [new NVPair("Authorization", "Bearer " + token)]
+        String token = "Bearer " + accessToken
+        headers.put("Authorization", token)
         request.setHeaders(headers)
         HTTPResponse response = request.GET("http://127.0.0.1:8080/api/jobs/1/active")
-        def jsonSlurper = new JsonSlurper()
-        def object = jsonSlurper.parseText(response.getText())
-        assert object instanceof Map
-        active = object.active
+        def slurper = new JsonSlurper()
+        def toJSON = { slurper.parseText(it) }
+        def result = response.getBody(toJSON);
+        active = result.active
         if (response.statusCode == 301 || response.statusCode == 302) {
             grinder.logger.warn("Warning. The response may not be correct. The response code was {}.", response.statusCode)
         } else {
@@ -138,7 +146,8 @@ class TestRunner {
 
     @Test
     public void test5() {
-        headers = [new NVPair("Authorization", "Bearer " + token)]
+        String token = "Bearer " + accessToken
+        headers.put("Authorization", token)
         request.setHeaders(headers)
         HTTPResponse response
         if (active) {
@@ -148,7 +157,6 @@ class TestRunner {
             response = request.POST("http://127.0.0.1:8080/api/jobs/1/runningTasks/new")
             assertThat(response.statusCode, is(201))
         }
-        println response.getText()
         if (response.statusCode == 301 || response.statusCode == 302) {
             grinder.logger.warn("Warning. The response may not be correct. The response code was {}.", response.statusCode)
         }
@@ -157,10 +165,11 @@ class TestRunner {
 
     @Test
     public void test6() {
-        headers = [new NVPair("Authorization", "Bearer " + token)]
+        String token = "Bearer " + accessToken
+        headers.put("Authorization", token)
         request.setHeaders(headers)
-        HTTPResponse response = request.POST("http://127.0.0.1:8080/api/tasks/1/flip")
-        println response.getText()
+        HTTPResponse response
+        response = request.POST("http://127.0.0.1:8080/api/tasks/1/flip")
         if (response.statusCode == 301 || response.statusCode == 302) {
             grinder.logger.warn("Warning. The response may not be correct. The response code was {}.", response.statusCode)
         } else {
